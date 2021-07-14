@@ -7,33 +7,118 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+### Carga de Paquetes
 
+```{r paquetes, message=FALSE, warning=FALSE}
+library(sf)
+library(raster)
+library(dplyr)
+library(spData)
+library(leaflet)
+library(plotly)
+library(DT)
+library(tidyr)
 ```
 
+### Registros
+ 
+```{r registros, message=FALSE, warning=FALSE}
+orquideas <-
+  st_read(
+    "https://raw.githubusercontent.com/gf0604-procesamientodatosgeograficos/2021i-datos/main/gbif/orchidaceae-cr-registros.csv",
+    options = c(
+      "X_POSSIBLE_NAMES=decimalLongitude",
+      "Y_POSSIBLE_NAMES=decimalLatitude"
+    ),
+    quiet = TRUE
+  )
 
-```{r}
-
+ASP <-
+  st_read(
+    "https://raw.githubusercontent.com/gf0604-procesamientodatosgeograficos/2021i-datos/main/sinac/asp/asp-wgs84.geojson",
+    quiet = TRUE
+  )
 ```
 
+### Asig sistema de coordenadas
 
 ```{r}
-
+st_crs(ASP) = 4326
+st_crs(orquideas) = 4326
 ```
 
+## Eliminar registros vacios
+
+```{r registros vacios, message=FALSE, warning=FALSE}
+
+orquideas$species[orquideas$species == ""] <- "nulos"
+
+orquideas <-
+  orquideas %>%
+  filter(!is.na(coordinateUncertaintyInMeters) &
+           coordinateUncertaintyInMeters <= 1000) %>%
+  filter(species != "nulos")
+```
+
+## Eliminar registros de AMM y AMP
+
+```{r registros AMM - AMP, message=FALSE, warning=FALSE}
+ASP <- ASP %>%
+  filter(descripcio != "Area Marina de Manejo" &
+           descripcio != "Area marina protegida")
+
+ASP_registros <-
+  ASP %>%
+  st_join(orquideas) %>%
+  group_by(nombre_asp) %>%
+  summarize(especies = n_distinct(species, na.rm = TRUE))
+```
+
+## Paleta de colores
 
 ```{r}
-
+colores_registros <-
+  colorNumeric(palette = "Greens",
+               domain = ASP_registros$especies,
+               na.color = "transparent")
 ```
 
+# Mapa Leaflet 
 
-
-
-
-
-
-
-
+```{r}
+leaflet() %>%
+  addTiles(group = "OSM") %>%
+  addPolygons(
+    data = ASP_registros,
+    fillColor = ~ colores_registros(ASP_registros$especies),
+    fillOpacity = 0.7,
+    stroke = TRUE,
+    color = "black",
+    weight = 1,
+    popup = paste(
+      paste(
+        "<strong>Area_Silvestre_Protegida:</strong>",
+        ASP_registros$nombre_asp
+      ),
+      paste(
+        "<strong>Cantidad de especies:</strong>",
+        ASP_registros$especies
+        
+      ),
+      sep = '<br/>'
+    ),
+    group = "ASP - especies"
+  ) %>%
+  addLayersControl(baseGroups = c("OSM"),
+                   overlayGroups = c("ASP - especies")) %>%
+  addLegend(
+    position = "bottomleft",
+    pal = colores_registros,
+    values = ASP_registros$especies,
+    group = "ASP - especies",
+    title = "Orquideas"
+  )
+```
 
 
 
